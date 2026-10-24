@@ -22,13 +22,16 @@ h1{font-size:1.45rem;line-height:1.2;margin:0;font-weight:700}
 .modes{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .modes button{background:var(--panel2);color:var(--soft);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font:600 .82rem Inter,sans-serif;cursor:pointer}
 .modes button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.stage{display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.5fr);gap:12px}
-@media (max-width:860px){.stage{grid-template-columns:1fr}}
+.stage{display:grid;grid-template-columns:minmax(0,var(--sl,63fr)) 14px minmax(0,var(--sr,37fr));align-items:start}
+.split{align-self:stretch;cursor:col-resize;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none}
+.split span{width:4px;height:56px;border-radius:4px;background:var(--line);transition:background .15s,height .15s}
+.split:hover span,.split.drag span{background:var(--accent);height:90px}
+@media (max-width:860px){.stage{grid-template-columns:1fr;gap:12px}.split{display:none}}
 .panel{background:#000;border:1px solid var(--line2);border-radius:14px;overflow:hidden;position:relative}
 .ptitle{position:absolute;left:12px;top:9px;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;pointer-events:none;z-index:2}
 canvas{display:block;width:100%}
 #c2d{aspect-ratio:1/1.02;cursor:crosshair;touch-action:none}
-#csp{height:clamp(360px,44vw,480px)}
+#csp{height:clamp(300px,var(--csh,420px),800px)}
 .hint{font-size:.78rem;color:var(--muted);padding:8px 2px 0}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
 @media (max-width:860px){.grid{grid-template-columns:1fr}}
@@ -114,9 +117,10 @@ li::marker{color:var(--accent)}
 </div>
 <div class="stage">
 <div class="panel"><div class="ptitle" id="t2d">2D · Apical 4-chamber</div><canvas id="c2d" aria-label="Apical four chamber view with color Doppler and Doppler cursor"></canvas></div>
+<div class="split" id="split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the echo image and the color map or spectrum" tabindex="0" title="Drag to resize. Double-click to reset."><span></span></div>
 <div class="panel"><div class="ptitle" id="tsp">Spectral Doppler</div><canvas id="csp" aria-label="Scrolling spectral Doppler display"></canvas></div>
 </div>
-<div class="hint" id="hint">Tip: in Color mode, drag the color box to move it and drag its yellow corner to resize it. Drag up or down on the color bar to shift the color baseline. In PW and CW, click or drag on the image to aim the Doppler line; in PW the sample gate sits where you click.</div>
+<div class="hint" id="hint">Tip: in Color mode, drag the color box to move it and drag its yellow corner to resize it. Drag up or down on the color bar to shift the color baseline. Drag the bar between the two panels to resize the echo image and the color map or spectrum. In PW and CW, click or drag on the image to aim the Doppler line; in PW the sample gate sits where you click.</div>
 <div class="grid">
 <div class="card">
 <h2>Controls</h2>
@@ -311,7 +315,7 @@ function contract(P,k){let cx=0,cy=0;P.forEach(p=>{cx+=p[0];cy+=p[1];});cx/=P.le
 const c2=document.getElementById('c2d'),x2=c2.getContext('2d');
 const cs=document.getElementById('csp'),xs=cs.getContext('2d');
 let W2=0,H2=0,Ws=0,Hs=0,dpr=1;
-function resize(){dpr=Math.min(2,window.devicePixelRatio||1);W2=c2.clientWidth;H2=c2.clientHeight;c2.width=Math.round(W2*dpr);c2.height=Math.round(H2*dpr);x2.setTransform(dpr,0,0,dpr,0,0);
+function resize(){{const st=document.querySelector('.stage');st.style.setProperty('--csh',(window.innerWidth>860?Math.round(c2.clientHeight):Math.round(Math.min(440,window.innerWidth*0.95)))+'px');}dpr=Math.min(2,window.devicePixelRatio||1);W2=c2.clientWidth;H2=c2.clientHeight;c2.width=Math.round(W2*dpr);c2.height=Math.round(H2*dpr);x2.setTransform(dpr,0,0,dpr,0,0);
 Ws=cs.clientWidth;Hs=cs.clientHeight;cs.width=Math.round(Ws*dpr);cs.height=Math.round(Hs*dpr);xs.setTransform(dpr,0,0,dpr,0,0);}
 window.addEventListener('resize',resize);
 const tex=document.createElement('canvas');tex.width=tex.height=256;{const t=tex.getContext('2d'),im=t.createImageData(256,256);for(let i=0;i<im.data.length;i+=4){im.data[i]=im.data[i+1]=im.data[i+2]=0;im.data[i+3]=Math.random()<0.55?Math.round(80*Math.random()):0;}t.putImageData(im,0,0);}
@@ -475,11 +479,12 @@ xb.putImageData(col,SB_W-1,0);ecgB[SB_W-1]=ecg(ph,rr);
 function drawSpec(){
 const L=14,R=Ws-58,T=34,ecgH=50,B=Hs-ecgH-18,pw=R-L,ph=B-T;
 xs.fillStyle='#000';xs.fillRect(0,0,Ws,Hs);
-if(S.mode==='color'){xs.fillStyle='#c9d3de';xs.font='600 13px Inter,sans-serif';xs.textAlign='center';
-xs.fillText('Color Doppler maps velocity onto the 2D image.',Ws/2,Hs/2-32);
+if(S.mode==='color'){const k=clamp(Math.min(Ws/360,Hs/420),0.7,1.7);xs.save();xs.translate(Ws/2,Hs/2-70*k);xs.scale(k,k);
+xs.fillStyle='#c9d3de';xs.font='600 13px Inter,sans-serif';xs.textAlign='center';
+xs.fillText('Color Doppler maps velocity onto the 2D image.',0,-32);
 xs.fillStyle='#8392a3';xs.font='500 12px Inter,sans-serif';
-xs.fillText('Choose PW or CW above to turn one line',Ws/2,Hs/2-8);xs.fillText('into a velocity-time spectrum.',Ws/2,Hs/2+8);
-drawBigBar(Ws/2-60,Hs/2+28,28,Math.min(150,Hs*0.32));return;}
+xs.fillText('Choose PW or CW above to turn one line',0,-8);xs.fillText('into a velocity-time spectrum.',0,8);
+drawBigBar(-60,28,28,150);xs.restore();return;}
 const vis=Math.min(SB_W,Math.round(pw));
 let img=sb;const {N,hi,lo}=specRange();
 if(S.invert){xs.save();xs.translate(0,T+B);xs.scale(1,-1);xs.drawImage(sb,SB_W-vis,0,vis,SB_H,L,0,pw,ph);xs.restore();}
@@ -686,6 +691,15 @@ function fb(ok,e,lead){$('qfb').innerHTML=`<div class="qfb ${ok?'ok':'no'}"><b>$
 function nextBtn(){if($('qnext'))return;const d=document.createElement('div');d.className='qactions';d.innerHTML=`<button class="btn primary" id="qnext">${qi===Q.length-1?'See score':'Next question'}</button>`;$('qfb').after(d);$('qnext').onclick=()=>{qi++;qRender();};}
 function qStart(){qi=0;score=0;qRender();}
 $('qstart').onclick=qStart;
+(function(){const st=document.querySelector('.stage'),sp=$('split');let pct=63;
+const apply=()=>{st.style.setProperty('--sl',pct+'fr');st.style.setProperty('--sr',(100-pct)+'fr');};
+const setFromX=x=>{const r=st.getBoundingClientRect();pct=clamp(Math.round((x-r.left)/r.width*100),35,78);apply();};
+let dr=false;sp.addEventListener('pointerdown',e=>{dr=true;sp.classList.add('drag');sp.setPointerCapture(e.pointerId);e.preventDefault();});
+sp.addEventListener('pointermove',e=>{if(dr)setFromX(e.clientX);});
+const end=()=>{dr=false;sp.classList.remove('drag');};sp.addEventListener('pointerup',end);sp.addEventListener('pointercancel',end);
+sp.addEventListener('dblclick',()=>{pct=63;apply();});
+sp.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){pct=clamp(pct-3,35,78);apply();}else if(e.key==='ArrowRight'){pct=clamp(pct+3,35,78);apply();}});
+apply();})();
 let last=null,roT=0;
 function frame(ts){
 if(last==null)last=ts;const dt=Math.min(50,ts-last);last=ts;
