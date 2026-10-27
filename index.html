@@ -275,6 +275,13 @@ body.instr-on #instr{display:block}
         <div><div class="lbl">LVOT obstruction (5-chamber)</div><div class="seg" id="loSeg"><button data-v="0" class="on">None</button><button data-v="1">Mild</button><button data-v="2">Mod</button><button data-v="3">Severe</button></div></div>
       </div>
       <div class="row two">
+        <div><div class="lbl">Aortic stenosis (5-chamber)</div><div class="seg" id="asSeg"><button data-v="0" class="on">None</button><button data-v="1">Mild</button><button data-v="2">Mod</button><button data-v="3">Severe</button></div></div>
+        <div><div class="lbl">Mitral stenosis (4-chamber)</div><div class="seg" id="msSeg"><button data-v="0" class="on">None</button><button data-v="1">Mild</button><button data-v="2">Mod</button><button data-v="3">Severe</button></div></div>
+      </div>
+      <div class="row two">
+        <div><div class="lbl">RA pressure (from the IVC)</div><div class="seg" id="rapSeg"><button data-v="3">3</button><button data-v="8" class="on">8</button><button data-v="15">15 mmHg</button></div></div><div></div>
+      </div>
+      <div class="row two">
         <div><div class="lbl">Mitral inflow</div><div class="seg" id="mvSeg"><button data-v="normal" class="on">Normal E&gt;A</button><button data-v="impaired">E&lt;A</button><button data-v="restrictive">Restrictive</button></div></div>
         <div><div class="lbl">Heart rate <b><span id="hrV">70</span> bpm</b></div><input id="hr" type="range" min="45" max="120" value="70"></div>
       </div>
@@ -357,7 +364,7 @@ body.instr-on #instr{display:block}
 <script>
 (function(){
 "use strict";
-const S={sweep:100,svs:3,wfl:8,cg:50,view:'a4c',sv:'normal',sound:false,mode:'color',ang:-11,gate:10.9,box:'mv',cn:79,cbl:0,sn:100,bl:0,tr:2,trv:2.8,mvp:'normal',hr:70,gain:50,speed:1,mr:0,mrv:5.0,variance:true,invert:false,paused:false,dgain:50,cwf:0.08,dline:false,vol:5,df:'sxs',ar:0,lvoto:0};
+const S={sweep:100,svs:3,wfl:8,cg:50,view:'a4c',sv:'normal',sound:false,mode:'color',ang:-11,gate:10.9,box:'mv',cn:79,cbl:0,sn:100,bl:0,tr:2,trv:2.8,mvp:'normal',hr:70,gain:50,speed:1,mr:0,mrv:5.0,variance:true,invert:false,paused:false,dgain:50,cwf:0.08,dline:false,vol:5,df:'sxs',ar:0,lvoto:0,as:0,ms:0,rap:8};
 let pxOn=false;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -380,13 +387,14 @@ function flows(ph){
   const s=(ph-0.035)/0.35,sys=s>0&&s<1?Math.pow(Math.sin(Math.PI*s),0.75):0;
   const trSize=[0,0.45,0.75,1][S.tr],mrSize=[0,0.45,0.75,1][S.mr];
   const se=(ph-0.05)/0.31,ej=se>0&&se<1?Math.pow(Math.sin(Math.PI*Math.pow(se,0.75)),0.85):0;
-  return {lvot:S.view==='a5c'?SVP[S.sv]*ej:0,mv:mvE+mvA,tv:tvE+tvA,tr:S.tr?S.trv*100*sys:0,mr:S.mr?S.mrv*100*(s>-0.03&&s<1.05?Math.pow(Math.sin(Math.PI*clamp((ph-0.025)/0.37,0,1)),0.5):0):0,trSize,mrSize,sys,...extraFlows(ph)};
+  return {lvot:S.view==='a5c'?SVP[S.sv]*ej:0,mv:S.ms?msFlow(ph):mvE+mvA,tv:tvE+tvA,tr:S.tr?S.trv*100*sys:0,mr:S.mr?S.mrv*100*(s>-0.03&&s<1.05?Math.pow(Math.sin(Math.PI*clamp((ph-0.025)/0.37,0,1)),0.5):0):0,trSize,mrSize,sys,...extraFlows(ph)};
 }
 /* jets: origin -> end (cm, x right, y depth). velocity vector along the jet axis */
 function jets(ph){
   const f=flows(ph),J=[],a5=S.view==='a5c';
   const mv0=a5?[3.5,10.65]:[2.6,10.65],mv1=a5?[2.8,5.0]:[2.0,4.8];
-  J.push({p0:mv0,p1:mv1,s0:0.55,s1:0.9,v:f.mv,turb:0.04,decay:0.35});
+  J.push({p0:mv0,p1:mv1,s0:S.ms?0.2:0.55,s1:S.ms?0.6:0.9,v:f.mv,turb:S.ms?0.3:0.04,decay:S.ms?0.45:0.35,jet:!!S.ms});
+  {const va=asFlow(ph);if(va>0)J.push({p0:[1.69,10.45],p1:[2.15,13.8],s0:0.26,s1:0.4,v:va,turb:0.5,decay:0.05,jet:true});}
   J.push({p0:[-2.3,10.55],p1:[-1.9,5.3],s0:0.55,s1:0.9,v:f.tv,turb:0.05,decay:0.35});
   if(f.tr>0)J.push({p0:[-2.3,10.7],p1:[-2.8,10.7+1.6+3.0*f.trSize],s0:0.13,s1:0.35+0.85*f.trSize,v:f.tr,turb:0.35,decay:0.55,jet:true});
   if(f.lvot>0)J.push({p0:LVOT_AX[0],p1:LVOT_AX[1],s0:0.62,s1:0.45,v:f.lvot,turb:0.04,decay:-0.18});
@@ -462,7 +470,7 @@ const dirXY=(d,a)=>{const r=a*Math.PI/180;return [d*Math.sin(r),d*Math.cos(r)];}
 
 /* ---------- valves ---------- */
 function valvesOpen(ph){const f=flows(ph),dia=sm(0.395,0.44,ph)*(1-sm(0.968,0.995,ph));
-  return {mv:dia*Math.max(0.58,clamp(f.mv/40,0,1)),tv:dia*Math.max(0.55,clamp(f.tv/30,0,1))};}
+  return {mv:dia*Math.max(0.58,clamp(f.mv/40,0,1))*[1,0.62,0.48,0.34][S.ms||0],tv:dia*Math.max(0.55,clamp(f.tv/30,0,1))};}
 /* ventricular contraction: rises through ejection, relaxes during isovolumic relaxation */
 function contraction(ph){if(ph<0.34)return Math.pow(Math.sin(Math.PI/2*ph/0.34),1.2);if(ph<0.47)return 0.5+0.5*Math.cos(Math.PI*(ph-0.34)/0.13);return 0;}
 /* longitudinal motion: the AV plane moves toward the apex in systole (lateral MV ~1.4 cm, lateral TV ~1.9 cm), atria lengthen */
@@ -530,8 +538,8 @@ function draw2d(ph){
   const mvC=[(A.MV[0][0]+A.MV[1][0])/2,(A.MV[0][1]+A.MV[1][1])/2+0.12],tvC=[(A.TV[0][0]+A.TV[1][0])/2,(A.TV[0][1]+A.TV[1][1])/2+0.15];
   leaf(A.MV[0],[mvC[0]-0.12,mvC[1]+0.05],[A.MV[0][0]+0.35,A.MV[0][1]-1.9],vo.mv,0.17);leaf(A.MV[1],[mvC[0]+0.12,mvC[1]+0.05],[A.MV[1][0]-0.25,A.MV[1][1]-1.5],vo.mv,0.15);
   leaf(A.TV[0],[tvC[0]+0.12,tvC[1]],[A.TV[0][0]-0.3,A.TV[0][1]-1.65],vo.tv,0.16);leaf(A.TV[1],[tvC[0]-0.12,tvC[1]],[A.TV[1][0]+0.25,A.TV[1][1]-1.4],vo.tv,0.15);
-  if(A.AV){const av=clamp(fl.lvot/25,0,1),c5=[(A.AV[0][0]+A.AV[1][0])/2,(A.AV[0][1]+A.AV[1][1])/2+0.07];A.AV.forEach(p=>dot(p[0],p[1],0.22,220));
-    leaf(A.AV[0],[c5[0]-0.06,c5[1]+0.05],[A.AV[0][0]+0.05,A.AV[0][1]+1.05],av,0.12);leaf(A.AV[1],[c5[0]+0.06,c5[1]+0.05],[A.AV[1][0]-0.05,A.AV[1][1]+1.0],av,0.12);}
+  if(A.AV){const av=clamp(fl.lvot/25,0,1)*[1,0.7,0.5,0.32][S.as||0],c5=[(A.AV[0][0]+A.AV[1][0])/2,(A.AV[0][1]+A.AV[1][1])/2+0.07];A.AV.forEach(p=>dot(p[0],p[1],0.22,220));
+    const avw=S.as?0.12+0.05*S.as:0.12;leaf(A.AV[0],[c5[0]-0.06,c5[1]+0.05],[A.AV[0][0]+0.05,A.AV[0][1]+1.05],av,avw);leaf(A.AV[1],[c5[0]+0.06,c5[1]+0.05],[A.AV[1][0]-0.05,A.AV[1][1]+1.0],av,avw);}
   if(A.AV&&fl.lvo>0)leaf(A.MV[0],[mvC[0]-0.12,mvC[1]+0.05],[1.75,9.25],clamp(fl.lvo/160,0,1),0.17);
   /* compose: blur for beam width, multiply speckle, depth attenuation */
   xo.setTransform(1,0,0,1,0,0);xo.globalCompositeOperation='source-over';xo.fillStyle='#000';xo.fillRect(0,0,off.width,off.height);
@@ -721,7 +729,7 @@ function renderASE(){
 const $=id=>document.getElementById(id);
 function stat(k,v){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;}
 function updateReadout(){
-  const key=JSON.stringify([S.ar,S.lvoto,DEPTH,S.dline,S.cwf,pxOn,S.dgain,S.sweep,S.wfl,S.svs,S.cg,S.hr,CB.ac,CB.dc,CB.w,CB.h,S.cbl,S.view,S.sv,S.mode,S.ang,S.gate,S.cn,S.sn,S.bl,S.tr,S.trv,S.mvp,S.mr,S.mrv,S.box,S.invert]);if(key===lastKey)return;lastKey=key;
+  const key=JSON.stringify([S.as,S.ms,S.rap,S.ar,S.lvoto,DEPTH,S.dline,S.cwf,pxOn,S.dgain,S.sweep,S.wfl,S.svs,S.cg,S.hr,CB.ac,CB.dc,CB.w,CB.h,S.cbl,S.view,S.sv,S.mode,S.ang,S.gate,S.cn,S.sn,S.bl,S.tr,S.trv,S.mvp,S.mr,S.mrv,S.box,S.invert]);if(key===lastKey)return;lastKey=key;
   const ro=$('readout'),note=$('note');let notes=[];note.classList.remove('warn');
   if(S.mode==='2d'){ro.innerHTML=stat('Depth',DEPTH+' cm')+stat('2D frame rate',pxFR()+' Hz')+stat('Mitral E peak',MVP[S.mvp].E+' cm/s')+stat('TR jet',S.tr?S.trv.toFixed(1)+' m/s':'none');note.innerHTML='2D only. Press <b>C</b> to add color flow over the image or <b>D</b> to show the Doppler line.';renderASE();return;}
   if(S.mode==='color'){const B=curBox(),CR=colRange();
@@ -751,13 +759,14 @@ function updateReadout(){
     else if(S.view==='a5c'&&S.mode==='pw')notes.push('To measure LVOT VTI, place the gate in the LVOT just below the aortic valve (use the "PW in LVOT (VTI)" placement).');
     if(!notes.length)notes.push('Good alignment and no aliasing. PW shows a thin, laminar envelope with a clear window underneath because every red cell in the small gate moves at a similar speed.');}
   else{const vtr=Math.abs(a.maxNeg)/100;
-    ro.innerHTML=stat('Scale',`±${(N/100).toFixed(1)} m/s`)+stat('Peak toward (+)',`${(a.maxPos/100).toFixed(2)} m/s`)+stat('Peak away (−)',`${vtr.toFixed(2)} m/s`)+(S.ang<0?stat('RVSP (TR, RAP 5)',vtr>1.5?`${Math.round(4*vtr*vtr+5)} mmHg`:'--'):S.view==='a5c'?stat(S.lvoto?'LVOT peak gradient':'LVOT/AV peak gradient',vtr>1?`${Math.round(4*vtr*vtr)} mmHg`:'--'):stat('LV–LA gradient (MR)',vtr>2?`${Math.round(4*vtr*vtr)} mmHg`:'--'))+(S.view==='a5c'&&S.ar&&S.ang>4?stat('AR peak velocity',`${(a.maxPos/100).toFixed(1)} m/s`)+stat('AR pressure half time',`${ARP[S.ar].pht} ms`):'')+(S.view==='a4c'&&S.mr&&S.ang>5?stat('MR dP/dt',`${mrDpdt()} mmHg/s`):'');
+    ro.innerHTML=stat('Scale',`±${(N/100).toFixed(1)} m/s`)+stat('Peak toward (+)',`${(a.maxPos/100).toFixed(2)} m/s`)+stat('Peak away (−)',`${vtr.toFixed(2)} m/s`)+(S.ang<0?stat(`RVSP (TR, RAP ${S.rap})`,vtr>1.5?`${Math.round(4*vtr*vtr+S.rap)} mmHg`:'--'):S.view==='a5c'?stat(S.lvoto?'LVOT peak gradient':'LVOT/AV peak gradient',vtr>1?`${Math.round(4*vtr*vtr)} mmHg`:'--'):stat('LV–LA gradient (MR)',vtr>2?`${Math.round(4*vtr*vtr)} mmHg`:'--'))+(S.view==='a5c'&&S.ar&&S.ang>4?stat('AR peak velocity',`${(a.maxPos/100).toFixed(1)} m/s`)+stat('AR pressure half time',`${ARP[S.ar].pht} ms`):'')+(S.view==='a4c'&&S.mr&&S.ang>5?stat('MR dP/dt',`${mrDpdt()} mmHg/s`):'')+valveCW(vtr,a);
     if(S.view==='a5c'&&S.lvoto&&S.ang>4)notes.push(`<b>Dynamic LVOT obstruction:</b> late-peaking, dagger-shaped envelope below the baseline. Peak gradient ≈ 4 × ${vtr.toFixed(1)}² = <b>${Math.round(4*vtr*vtr)} mmHg</b>.`);
     if(S.view==='a5c'&&S.ar&&S.ang>4)notes.push(`<b>Aortic regurgitation:</b> diastolic signal above the baseline. Pressure half time ${ARP[S.ar].pht} ms (${SEV[S.ar]}). Shorter PHT means more severe AR.`);
+    valveNotes(notes);
     if(S.view==='a4c'&&S.mr&&S.ang>5)notes.push(`MR dP/dt ≈ <b>${mrDpdt()} mmHg/s</b> (normal above about 1200).`);
     notes.push('CW records every velocity along the whole line, so the spectrum is filled in and it never aliases. It cannot tell you the depth the velocity came from.');
     if(S.mr&&S.ang>5)notes.push(`MR jet: peak about ${S.mrv.toFixed(1)} m/s. By Bernoulli, LV-to-LA systolic gradient ≈ 4 × ${S.mrv.toFixed(1)}² = ${Math.round(4*S.mrv*S.mrv)} mmHg.`);
-    if(S.tr&&vtr>1.5&&S.ang<0)notes.push(`Peak TR ${vtr.toFixed(1)} m/s → RVSP ≈ 4 × ${vtr.toFixed(1)}² + RAP 5 = <b>${Math.round(4*vtr*vtr+5)} mmHg</b>.`);
+    if(S.tr&&vtr>1.5&&S.ang<0)notes.push(`Peak TR ${vtr.toFixed(1)} m/s → RVSP ≈ 4 × ${vtr.toFixed(1)}² + RAP ${S.rap} = <b>${Math.round(4*vtr*vtr+S.rap)} mmHg</b>.`);
     if(a.maxNeg<lo||a.maxPos>hi){notes.push('<b>Off scale:</b> the peak is beyond the displayed range. Increase the scale or shift the baseline.');note.classList.add('warn');}}
   note.innerHTML=notes.join('<br><br>');renderASE();
 }
@@ -918,7 +927,7 @@ function pxSyncLite(){
   const sv=(id,v)=>{const e=$(id);if(e){e.value=v;fill(e);}};
   sv('cn',S.cn);$('cnV').textContent=S.cn;sv('cbl',S.cbl);updCbl();sv('sn',S.sn);updSn();sv('bl',S.bl);$('blV').textContent=(S.bl>0?'+':'')+S.bl+'%';
   sv('gain',S.gain);$('gainV').textContent=S.gain;sv('svs',S.svs);$('svsV').textContent=S.svs;sv('cg',S.cg);$('cgV').textContent=S.cg;
-  sv('trv',S.trv);$('trvV').textContent=S.trv.toFixed(1);setSeg('trSeg',S.tr);setSeg('mrSeg',S.mr);setSeg('viewSeg',S.view);setSeg('viewTop',S.view);setSeg('arSeg',S.ar);setSeg('loSeg',S.lvoto);
+  sv('trv',S.trv);$('trvV').textContent=S.trv.toFixed(1);setSeg('trSeg',S.tr);setSeg('mrSeg',S.mr);setSeg('viewSeg',S.view);setSeg('viewTop',S.view);setSeg('arSeg',S.ar);setSeg('loSeg',S.lvoto);setSeg('asSeg',S.as);setSeg('msSeg',S.ms);setSeg('rapSeg',S.rap);
   setSeg('swSeg',S.sweep);setSeg('wfSeg',S.wfl);$('variance').checked=S.variance;$('invert').checked=S.invert;
   $('pause').textContent=S.paused?'Unfreeze':'Freeze';$('sound').classList.toggle('on',S.sound);$('sound').textContent=S.sound?'Sound on':'Sound off';
   syncBoxSliders();lastKey='';}
@@ -1127,7 +1136,7 @@ document.querySelectorAll('#ctlSeg button').forEach(b=>b.onclick=()=>pxSet(b.dat
 const pxGateNear=(x0,y0,r)=>{const [x,y]=dirXY(S.gate,S.ang);return Math.hypot(x-x0,y-y0)<r;};
 const pxInBox=(x,y)=>{const B=curBox(),d=Math.hypot(x,y),a=Math.atan2(x,y)*180/Math.PI;return d>B.d0&&d<B.d1&&a>B.a0&&a<B.a1;};
 const pxNoAlias=()=>{const a=analyze(),r=specRange();return a.maxPos<=r.hi&&a.maxNeg>=r.lo;};
-function pxReset(){S.paused=false;S.dline=false;DEPTH=17;S.view='a4c';S.cn=60;S.cbl=0;S.cg=50;S.gain=50;S.dgain=50;S.cwf=0.08;S.sn=80;S.bl=0;S.sweep=100;S.wfl=8;S.svs=3;S.invert=false;S.variance=true;S.mr=0;S.ar=0;S.lvoto=0;S.mvp='normal';setSeg('mvSeg','normal');
+function pxReset(){S.paused=false;S.dline=false;DEPTH=17;S.view='a4c';S.cn=60;S.cbl=0;S.cg=50;S.gain=50;S.dgain=50;S.cwf=0.08;S.sn=80;S.bl=0;S.sweep=100;S.wfl=8;S.svs=3;S.invert=false;S.variance=true;S.mr=0;S.ar=0;S.lvoto=0;S.as=0;S.ms=0;S.rap=8;S.mvp='normal';setSeg('mvSeg','normal');
   setBox('mv');PX.ov=false;PX.sel='pos';PX.cflow='M';PX.lastDop='pw';}
 const mvTips=()=>{const [x,y]=dirXY(S.gate,S.ang);return Math.abs(x-2.5)<0.8&&y>8.8&&y<10.7;};
 const DR=[
@@ -1182,7 +1191,7 @@ const ARP={1:{V:4.2,pht:600,sz:0.35},2:{V:4.4,pht:400,sz:0.65},3:{V:4.0,pht:200,
 function extraFlows(ph){let ar=0,lvo=0,arSize=0;
   if(S.view==='a5c'){const rr=60000/S.hr,P=ARP[S.ar];
     if(P&&ph>0.40){const t=(ph-0.40)*rr,k=0.293*P.V*100/P.pht;ar=Math.max(0,P.V*100*Math.min(1,t/25)-k*t)*(1-sm(0.965,0.99,ph));arSize=P.sz;}
-    const L=LOP[S.lvoto],x=(ph-0.05)/0.31;if(L&&x>0&&x<1){const ej=Math.pow(Math.sin(Math.PI*Math.pow(x,0.75)),0.85);lvo=Math.max(0,L*100*Math.pow(x,2.4)*Math.pow(1-x,0.6)/(Math.pow(0.8,2.4)*Math.pow(0.2,0.6))-SVP[S.sv]*ej);}}
+    const L=LOP[S.lvoto],x=(ph-0.05)/0.31;if(L&&x>0&&x<1){const ej=Math.pow(Math.sin(Math.PI*Math.pow(x,0.75)),0.85);const xp=3.4/3.82,sab=Math.pow(x,3.4)*Math.pow(1-x,0.42)/(Math.pow(xp,3.4)*Math.pow(1-xp,0.42));lvo=Math.max(0,L*100*sab-SVP[S.sv]*ej);}}
   return {ar,lvo,arSize};}
 function mrDpdt(){const rr=60000/S.hr;let t1=null,t2=null;
   for(let ph=0;ph<0.3;ph+=0.0005){const v=flows(ph).mr;if(t1==null&&v>=100)t1=ph;if(t2==null&&v>=300){t2=ph;break;}}
@@ -1201,6 +1210,35 @@ const cwOn=a0=>S.mode==='cw'&&Math.abs(S.ang-a0)<=2.5;
 const fitsAway=min=>{if(S.mode!=='cw'||S.dline)return false;const a=analyze(),r=specRange();return a.maxNeg>=r.lo&&a.maxNeg<-min;};
 const fitsToward=min=>{if(S.mode!=='cw'||S.dline)return false;const a=analyze(),r=specRange();return a.maxPos<=r.hi&&a.maxPos>min;};
 const boxCovers=(...P)=>S.mode==='color'&&P.every(p=>pxInBox(p[0],p[1]));
+/* ================= Aortic stenosis, mitral stenosis, RA pressure ================= */
+const PHONE=false;
+const ASP={1:2.6,2:3.4,3:4.4},MSP={1:{V:1.6,pht:110},2:{V:2.0,pht:150},3:{V:2.4,pht:220}};
+const ejOf=x=>x>0&&x<1?Math.pow(Math.sin(Math.PI*Math.pow(x,0.75)),0.85):0;
+/* AS: rounded envelope; peaks earlier when mild, later and more symmetric when severe */
+function asW(x){if(x<=0||x>=1)return 0;const pk=[0,0.36,0.42,0.5][S.as],p=Math.log(0.5)/Math.log(pk);return Math.pow(Math.sin(Math.PI*Math.pow(x,p)),[0,1.9,1.25,0.8][S.as]);}
+function asFlow(ph){if(!S.as||S.view!=='a5c')return 0;const x=(ph-0.05)/0.31;return Math.max(0,ASP[S.as]*100*asW(x)-SVP[S.sv]*ejOf(x));}
+/* MS: fast E upstroke, slow linear deceleration set by the pressure half time, A wave on top */
+function msFlow(ph){const P=MSP[S.ms],rr=60000/S.hr,t=(ph-0.47)*rr;if(!P||t<=0||ph>0.985)return 0;
+  const k=0.293*P.V*100/P.pht;return Math.max(0,P.V*100*Math.min(1,t/40)-k*t)+0.32*P.V*100*wave(ph,0.885,0.028,0.035);}
+function asCalc(){const rr=60/S.hr,N=600;let lv=0,av=0,mg=0,n=0,vmax=0;
+  for(let k=0;k<N;k++){const ph=k/N,x=(ph-0.05)/0.31;if(x<=0||x>=1)continue;const l=SVP[S.sv]*ejOf(x),a=Math.max(l,ASP[S.as]*100*asW(x));lv+=l*rr/N;av+=a*rr/N;mg+=4*(a/100)**2;n++;vmax=Math.max(vmax,a);}
+  /* scale to the velocity CW actually shows when the line is through the valve, so numbers match the screen */
+  let f=1;if(S.mode==='cw'&&S.view==='a5c'&&Math.abs(S.ang-9.2)<4){const m=-analyze().maxNeg;if(m>150)f=clamp(m/vmax,0.6,1.4);}
+  av*=f;mg*=f*f;vmax*=f;
+  return {vmax:vmax/100,lvVTI:lv,avVTI:av,mean:n?mg/n:0,ava:Math.PI*lv/Math.max(av,1),di:lv/Math.max(av,1)};}
+function msCalc(){const P=MSP[S.ms],N=800;let mg=0,n=0,vmax=0;for(let k=0;k<N;k++){const v=msFlow(k/N);if(v>5){mg+=4*(v/100)**2;n++;vmax=Math.max(vmax,v);}}
+  return {pht:P.pht,mva:220/P.pht,mean:n?mg/n:0,vmax:vmax/100};}
+function valveCW(vtr,a){let h='';
+  if(S.view==='a5c'&&S.as&&S.ang>4){const c=asCalc();h+=stat('AV peak velocity',`${c.vmax.toFixed(1)} m/s`)+stat('AV mean gradient',`${Math.round(c.mean)} mmHg`)+stat('AVA (continuity)',`${c.ava.toFixed(2)} cm²`)+stat('Dimensionless index',c.di.toFixed(2));}
+  if(S.view==='a4c'&&S.ms&&S.ang>5){const c=msCalc();h+=stat('MV pressure half time',`${c.pht} ms`)+stat('MVA (220 ÷ PHT)',`${c.mva.toFixed(1)} cm²`)+stat('MV mean gradient',`${Math.round(c.mean)} mmHg`);}
+  return h;}
+function valveNotes(notes){
+  if(S.view==='a5c'&&S.as&&S.ang>4){const c=asCalc();notes.push(`<b>Aortic stenosis:</b> rounded envelope below the baseline, Vmax ${c.vmax.toFixed(1)} m/s, mean gradient ${Math.round(c.mean)} mmHg, AVA ${c.ava.toFixed(2)} cm² (LVOT VTI ${c.lvVTI.toFixed(0)} cm ÷ AV VTI ${c.avVTI.toFixed(0)} cm × 3.14 cm²). Severe: Vmax ≥ 4 m/s, mean ≥ 40 mmHg, AVA < 1.0 cm².`);}
+  if(S.view==='a4c'&&S.ms&&S.ang>5){const c=msCalc();notes.push(`<b>Mitral stenosis:</b> high diastolic inflow with a slow deceleration slope. PHT ${c.pht} ms → MVA ≈ 220 ÷ ${c.pht} = ${c.mva.toFixed(1)} cm²; mean gradient ${Math.round(c.mean)} mmHg (heart rate dependent).`);}}
+document.querySelectorAll('#asSeg button').forEach(b=>b.onclick=()=>{S.as=+b.dataset.v;setSeg('asSeg',S.as);if(S.as&&S.view!=='a5c')setView('a5c');lastKey='';});
+document.querySelectorAll('#msSeg button').forEach(b=>b.onclick=()=>{S.ms=+b.dataset.v;setSeg('msSeg',S.ms);if(S.ms&&S.view!=='a4c')setView('a4c');lastKey='';});
+document.querySelectorAll('#rapSeg button').forEach(b=>b.onclick=()=>{S.rap=+b.dataset.v;setSeg('rapSeg',S.rap);lastKey='';});
+
 const LS=[
  {name:'Mitral regurgitation',intro:'Color to find and size the MR jet, then CW through the jet for peak velocity and dP/dt, a marker of LV contractility. Apical 4-chamber. (The PX tutorial measures vena contracta in zoomed PLAX.)',
   setup(){pxReset();S.mr=2;S.mrv=5.0;S.cn=40;S.sn=60;S.bl=0;S.sweep=50;S.ang=0;S.gate=8;setBox('tv');pxMode('2d');},
@@ -1271,20 +1309,70 @@ const LS=[
    st('p:calcs','Press CALCS.','On the PX: Aortic Valve › LVOT VMax (or AV VMax). Put the caliper on the peak of the dagger. Peak gradient = 4 × V².'),
    st('p:saveImg','Press Save image.','')],
   result(){const a=analyze(),v=S.mode==='cw'&&a.maxNeg<-100?-a.maxNeg/100:LOP[S.lvoto||2];return 'Peak LVOT velocity about <b>'+v.toFixed(1)+' m/s</b>, peak gradient about <b>'+Math.round(4*v*v)+' mmHg</b>.';},
-  interp:'A late-peaking, dagger-shaped CW envelope with mid-LVOT color aliasing and SAM means dynamic LVOT obstruction. Aortic stenosis instead peaks earlier with a rounded envelope, and its aliasing starts at the valve. A peak gradient of 30 mmHg or more is obstruction; 50 mmHg or more is hemodynamically important. In shock it worsens with inotropes, hypovolemia and tachycardia: stop inotropes, give volume, and consider beta blockade and a pure vasoconstrictor.'}];
+  interp:'A late-peaking, dagger-shaped CW envelope with mid-LVOT color aliasing and SAM means dynamic LVOT obstruction. Aortic stenosis instead peaks earlier with a rounded envelope, and its aliasing starts at the valve. A peak gradient of 30 mmHg or more is obstruction; 50 mmHg or more is hemodynamically important. In shock it worsens with inotropes, hypovolemia and tachycardia: stop inotropes, give volume, and consider beta blockade and a pure vasoconstrictor.'},
+ {name:'TR and RVSP',intro:'Use color to find the TR jet, line it up with CW, measure the TR peak velocity and add RA pressure: RVSP = 4V² + RAP. (On the PX use the RV-focused apical 4-chamber view.)',
+  setup(){pxReset();S.tr=2;S.trv=3.0;S.rap=8;S.sn=30;S.bl=0;S.ang=0;S.gate=8;setBox('mv');PX.lastDop='pw';pxMode('2d');},
+  steps:[
+   st('p:C','Press C to turn on color.','Color shows where the jet goes so you can align the CW line with it. TR is the blue mosaic in the right atrium in systole.'),
+   st('p:touchpad','Drag on the touchpad to move the color box over the tricuspid valve and right atrium.','Keep the box small for a higher frame rate. A vena contracta of 0.7 cm or more is severe TR.',{check:()=>boxCovers([-2.6,11.6],[-2.3,10.6]),doIt(){Object.assign(CB,BOXP.tv);clearBoxSeg();syncBoxSliders();}}),
+   ...(PHONE?[st('p:D','Press CW.','TR jets are usually 2 to 4 m/s, far above the PW limit at this depth.',{after(){if(S.mode!=='cw')pxTouch('dm:cw');}})]:
+     [st('p:D','Press D.',''),st('t:dm:cw','On Doppler Mode, tap CW.','TR jets are usually 2 to 4 m/s, far above the PW limit at this depth.',{check:()=>S.mode==='cw'})]),
+   st('p:touchpad','Drag on the touchpad to move the CW line straight through the TR jet.','Sample several windows (RV-focused, parasternal RV inflow, subcostal) and use the highest clean velocity.',{check:()=>cwOn(-12.5),doIt(){S.ang=-12.5;S.gate=10.6;}}),
+   st('p:update','Press UPDATE to start the sweep.',''),
+   st('t:ds+','Tap Scale ▲ until the whole TR envelope fits (at least 4 m/s below the baseline).','',{check:()=>fitsAway(200)&&-specRange().lo>=400,doIt(){S.sn=80;}}),
+   st('p:freeze','Press Freeze.',''),
+   st('p:calcs','Press CALCS.','On the PX: Tricuspid/Pulmonic › TR VMax. Put the caliper on the peak of the dense envelope; ignore the faint feathery tip.'),
+   st('x:rap','Set the RA pressure from the IVC under RA pressure in the Patient card. For this patient the IVC is 2.4 cm and collapses less than 50 percent.','IVC 2.1 cm or less and collapsing more than 50 percent = 3 mmHg; dilated and collapsing less than 50 percent = 15 mmHg; anything in between = 8 mmHg. On the PX: tap RAP and choose the value.',{check:()=>S.rap===15,doIt(){S.rap=15;setSeg('rapSeg',15);}}),
+   st('p:saveImg','Press Save image to save RVSP to the report.','')],
+  result:()=>'TR peak velocity <b>'+S.trv.toFixed(1)+' m/s</b>. RVSP = 4 × '+S.trv.toFixed(1)+'² + RAP '+S.rap+' = <b>'+Math.round(4*S.trv*S.trv+S.rap)+' mmHg</b>. Change Peak TR velocity in the Patient card to see how RVSP follows.',
+  interp:'TR velocity above 2.8 m/s suggests pulmonary hypertension is possible (ASE and ESC use 2.8 m/s). RVSP is underestimated when the beam is not parallel to the jet or the envelope is incomplete.'},
+ {name:'Aortic stenosis',intro:'The continuity equation: LVOT VTI with PW, AV VTI with CW, then AVA = LVOT area × LVOT VTI ÷ AV VTI. Apical 5-chamber. (The PX tutorial measures LVOT diameter in zoomed PLAX first; this lab uses 2.0 cm.)',
+  setup(){pxReset();S.as=3;S.sn=60;S.bl=0;S.svs=4;S.ang=0;S.gate=7;setBox('tv');PX.lastDop='pw';pxMode('2d');setView('a5c');},
+  steps:[
+   st('p:C','Press C to turn on color.','In AS, aliasing starts at the valve and flow is laminar below it in the LVOT. The leaflets are thick and barely open.'),
+   st('p:touchpad','Drag on the touchpad to move the color box over the LVOT and aortic valve.','',{check:()=>boxCovers([1.5,10.3],[1.4,11.5]),doIt(){Object.assign(CB,BOXP.lvot);clearBoxSeg();syncBoxSliders();}}),
+   st('p:D',PHONE?'Press PW.':'Press D. PW is selected.',''),
+   st('p:touchpad','Put the PW gate in the LVOT just below the valve, where flow is still laminar.','In AS, flow accelerates close to the valve. If the PW envelope gets fuzzy, step the gate back toward the apex.',{check:()=>S.mode==='pw'&&gateInLVOT()&&avDist()>=0.35&&avDist()<=0.9,doIt(){S.ang=9.2;S.gate=10.03;}}),
+   st('p:update','Press UPDATE to start the sweep.',''),
+   st('t:db+','Tap Baseline ▲ (and Scale ▲ if needed) so the LVOT envelope fits without wrapping.','',{check:()=>S.mode==='pw'&&!S.dline&&pxNoAlias()&&S.bl>0,doIt(){S.bl=40;S.sn=100;capScale();}}),
+   st('p:freeze','Press Freeze.',''),
+   st('p:calcs','Press CALCS.','On the PX: Aortic Valve › LVOT VTI ▾ › Manual Trace. Set the start with SELECT and trace the dense modal velocity of one beat.'),
+   st('p:freeze','Press Freeze to go back to live imaging.',''),
+   st('t:dm:cw',PHONE?'Press CW.':'On Doppler Mode, tap CW.','The line stays where you aimed it. Also check right parasternal and suprasternal windows on the patient and report the highest velocity from any window.',{check:()=>S.mode==='cw',after(){S.sn=40;S.bl=0;pxSyncLite();pxRender();}}),
+   st('t:ds+','Tap Scale ▲ (and Baseline ▲) until the scale shows at least 5 m/s and the whole envelope fits below the baseline.','',{check:()=>fitsAway(300)&&-specRange().lo>=500,doIt(){S.sn=100;S.bl=0;}}),
+   st('p:freeze','Press Freeze.',''),
+   st('p:calcs','Press CALCS.','On the PX: Aortic Valve › AV VTI ▾ › Manual Trace. Trace the dense CW envelope; the PX reports AV VMax, mean gradient and AVA by continuity.'),
+   st('p:saveImg','Press Save image.','')],
+  result(){const c=asCalc();return 'AV Vmax <b>'+c.vmax.toFixed(1)+' m/s</b>, mean gradient <b>'+Math.round(c.mean)+' mmHg</b>, AVA <b>'+c.ava.toFixed(2)+' cm²</b>, dimensionless index <b>'+c.di.toFixed(2)+'</b>. Try Mild and Moderate under Aortic stenosis in the Patient card.';},
+  interp:'Severe AS (ASE/EACVI): Vmax 4 m/s or more, mean gradient 40 mmHg or more, AVA under 1.0 cm², dimensionless index under 0.25. If AVA is small but the gradients are low, think low flow (check stroke volume index under 35 mL/m²).'},
+ {name:'Mitral stenosis',intro:'CW through the mitral valve for the pressure half time (MVA = 220 ÷ PHT) and the mean gradient. Apical 4-chamber. (The PX tutorial also planimeters the orifice in PSAX.)',
+  setup(){pxReset();S.ms=3;S.sn=30;S.bl=0;S.ang=0;S.gate=8;setBox('tv');PX.lastDop='pw';pxMode('2d');},
+  steps:[
+   st('p:C','Press C to turn on color.','In MS a narrow, aliasing jet (candle flame) comes through the domed mitral orifice in diastole. Use it to aim the CW line.'),
+   st('p:touchpad','Drag on the touchpad to move the color box over the mitral valve and LV inflow.','',{check:()=>boxCovers([2.6,10.4],[2.4,8.6]),doIt(){Object.assign(CB,BOXP.mv);clearBoxSeg();syncBoxSliders();}}),
+   ...(PHONE?[st('p:D','Press CW.','MS inflow is often above 1.5 m/s and CW records the whole envelope.',{after(){if(S.mode!=='cw')pxTouch('dm:cw');}})]:
+     [st('p:D','Press D.',''),st('t:dm:cw','On Doppler Mode, tap CW.','MS inflow is often above 1.5 m/s and CW records the whole envelope.',{check:()=>S.mode==='cw'})]),
+   st('p:touchpad','Drag on the touchpad to line the CW beam up with the mitral inflow jet.','',{check:()=>cwOn(14),doIt(){S.ang=14;S.gate=10.6;}}),
+   st('p:update','Press UPDATE to start the sweep.',''),
+   st('t:db-','Tap Baseline ▼ (and Scale ▲ if needed) so the diastolic inflow (toward the probe, above the baseline) fits.','',{check:()=>fitsToward(150),doIt(){S.bl=-40;S.sn=50;}}),
+   st('p:freeze','Press Freeze.',''),
+   st('p:calcs','Press CALCS.','On the PX: Mitral Valve › MV PHT. Put the first caliper on the E peak, press SELECT and drag the second along the deceleration slope (if the early slope is steeper, follow the main mid-diastolic slope). Then MV VTI ▾ › Manual Trace for the mean gradient.'),
+   st('p:saveImg','Press Save image.','')],
+  result(){const c=msCalc();return 'PHT <b>'+c.pht+' ms</b>, MVA ≈ 220 ÷ '+c.pht+' = <b>'+c.mva.toFixed(1)+' cm²</b>, mean gradient <b>'+Math.round(c.mean)+' mmHg</b> at '+S.hr+' bpm. Raise the heart rate in the Patient card and watch the gradient climb.';},
+  interp:'Severe rheumatic MS: MVA 1.5 cm² or less (very severe 1.0 or less) and PHT 150 ms or more. A mean gradient over 10 mmHg supports severe disease but depends on heart rate. PHT is unreliable right after valvotomy and with significant AR or abnormal LV compliance.'}];
 function iHLv(v){document.querySelectorAll('#viewTop button').forEach(b=>b.classList.toggle('hlv',b.dataset.v===v));}
 function iRender(){const b=$('ibody');
   $('ichips').innerHTML=LS.map((l,k)=>'<button class="'+(I.L===l?'on':'')+'" data-k="'+k+'">'+l.name+'</button>').join('');
   $('ichips').querySelectorAll('button').forEach(x=>x.onclick=()=>iStart(LS[+x.dataset.k]));
   if(!I.L){$('iprog').textContent='';b.innerHTML='<div class="iwhy">Pick a walkthrough. Each one runs on this simulator with the Sonosite PX controls, using the button sequences from the <a href="https://www.pulmonarypocus.com/sonosite-px-tutorial" target="_top">Sonosite PX Tutorial</a>. The next control to press is ringed in yellow; press it on the panel below.</div>';return;}
   const L=I.L,n=L.steps.length;
-  if(I.i>=n){$('iprog').textContent='Complete';pxHL([]);iHLv(null);
+  if(I.i>=n){$('iprog').textContent='Complete';pxHL([]);iHLv(null);$('rapSeg').classList.remove('hlv');
     b.innerHTML='<div class="ibar"><i style="width:100%"></i></div><div class="isay">Done: '+L.name+'</div><div class="note">'+L.result()+'</div><div class="iwhy">'+L.interp+'</div><div class="qactions"><button class="btn primary" id="iagain">Repeat</button></div>';$('iagain').onclick=()=>iStart(L);return;}
   const s=L.steps[I.i];$('iprog').textContent='Step '+(I.i+1)+' of '+n;
   b.innerHTML='<div class="ibar"><i style="width:'+(I.i/n*100).toFixed(0)+'%"></i></div>'+(I.i===0?'<div class="iwhy" style="margin:0 0 8px">'+L.intro+'</div>':'')+'<div class="isay">'+s.say+'</div>'+(s.why?'<div class="iwhy">'+s.why+'</div>':'')+
     '<div class="qactions"><button class="btn" id="iback" style="margin-left:0">Back</button>'+(s.t?'<button class="btn" id="ishow" style="margin-left:0">Show me</button>':'')+'<button class="btn'+(s.t?'':' primary')+'" id="inext" style="margin-left:0">'+(s.t?'Skip ›':'Next ›')+'</button></div>';
   $('iback').onclick=()=>{if(I.i>0){I.i--;iEnter();}};$('inext').onclick=()=>{I.i++;iEnter();};if(s.t)$('ishow').onclick=iShow;
-  pxHL(s.t&&s.t[0]!=='v'?[s.t]:[]);iHLv(s.t&&s.t[0]==='v'?s.t.slice(2):null);}
+  pxHL(s.t&&s.t[0]!=='v'?[s.t]:[]);iHLv(s.t&&s.t[0]==='v'?s.t.slice(2):null);$('rapSeg').classList.toggle('hlv',s.t==='x:rap');}
 function iEnter(){I.acts=new Set();I.t0=performance.now();iRender();}
 function iShow(){const s=I.L&&I.L.steps[I.i];if(!s||!s.t)return;
   if(s.doIt)s.doIt();else if(s.t.startsWith('p:'))PXK[s.t.slice(2)]();else if(s.t.startsWith('t:'))pxTouch(s.t.slice(2));
@@ -1292,9 +1380,9 @@ function iShow(){const s=I.L&&I.L.steps[I.i];if(!s||!s.t)return;
 function iStart(L){I.on=true;I.L=L;I.i=0;document.body.classList.add('instr-on');$('instrBtn').classList.add('on');if(!pxOn)pxSet(true);
   L.setup();pxSyncLite();pxTitles();pxRender();pxMsg('<b>'+L.name+'</b>: follow the steps in the Instructional card above the controls.');iEnter();}
 function iOpen(){I.on=true;document.body.classList.add('instr-on');$('instrBtn').classList.add('on');if(!pxOn)pxSet(true);iRender();}
-function iClose(){I.on=false;I.L=null;document.body.classList.remove('instr-on');$('instrBtn').classList.remove('on');pxHL([]);iHLv(null);}
+function iClose(){I.on=false;I.L=null;$('rapSeg').classList.remove('hlv');document.body.classList.remove('instr-on');$('instrBtn').classList.remove('on');pxHL([]);iHLv(null);}
 function iTick(){if(!I.on||!I.L||I.i>=I.L.steps.length)return;const now=performance.now();if(now-I.t0<400||now-I.lt<200)return;I.lt=now;
-  const s=I.L.steps[I.i];if(!s.t)return;if(s.check?s.check():I.acts.has(s.t)){I.i++;iEnter();}}
+  const s=I.L.steps[I.i];if(!s.t)return;if(s.check?s.check():I.acts.has(s.t)){if(s.after)s.after();I.i++;iEnter();}}
 $('instrBtn').onclick=()=>{if(document.body.classList.contains('instr-on'))iClose();else iOpen();};
 $('iclose').onclick=iClose;
 
